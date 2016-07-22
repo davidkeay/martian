@@ -55,6 +55,7 @@ type Proxy struct {
 	mitm         *mitm.Config
 	proxyURL     *url.URL
 	conns        *sync.WaitGroup
+	activeConns  map[net.Conn]int
 	mux          *http.ServeMux
 	closing      int32 // atomic
 
@@ -77,11 +78,12 @@ func NewProxy() *Proxy {
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: time.Second,
 		},
-		timeout: 5 * time.Minute,
-		conns:   &sync.WaitGroup{},
-		mux:     http.DefaultServeMux,
-		reqmod:  noop,
-		resmod:  noop,
+		timeout:     5 * time.Minute,
+		conns:       &sync.WaitGroup{},
+		activeConns: make(map[net.Conn]int),
+		mux:         http.DefaultServeMux,
+		reqmod:      noop,
+		resmod:      noop,
 	}
 }
 
@@ -127,6 +129,10 @@ func (p *Proxy) Close() {
 	log.Infof("martian: closing down proxy")
 
 	atomic.StoreInt32(&p.closing, 1)
+	for c := range p.activeConns {
+		c.Close()
+		delete(p.activeConns, c)
+	}
 	p.conns.Wait()
 }
 
@@ -197,6 +203,8 @@ func (p *Proxy) Serve(l net.Listener) error {
 
 func (p *Proxy) handleLoop(conn net.Conn) {
 	p.conns.Add(1)
+	p.activeConns[conn] = 1
+	defer delete(p.activeConns, conn)
 	defer p.conns.Done()
 	defer conn.Close()
 
