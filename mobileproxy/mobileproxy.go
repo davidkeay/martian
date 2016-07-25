@@ -161,8 +161,8 @@ func StartWithCertificate(proxyAddr string, cert string, key string) (*Martian, 
 // Shutdown tells the Proxy to close. The proxy will stay alive until all connections through it
 // have closed or timed out.
 func (p *Martian) Shutdown() {
-	mlog.Infof("mobileproxy: telling proxy to close")
 	p.proxy.Close()
+	p.listener.Close()
 	mlog.Infof("mobileproxy: proxy closed")
 }
 
